@@ -154,6 +154,10 @@ type FilterQuery struct {
 	Topics [][]common.Hash
 }
 
+type FilterMethod struct {
+	Method int // just as a test
+}
+
 // LogFilterer provides access to contract log events using a one-off query or continuous
 // event subscription.
 //

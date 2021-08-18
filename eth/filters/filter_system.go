@@ -21,6 +21,7 @@ package filters
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -52,6 +53,8 @@ const (
 	PendingTransactionsSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
+	// FilteredTransactionsSubscription filtered
+	FilteredTransactionsSubscription
 	// LastSubscription keeps track of the last index
 	LastIndexSubscription
 )
@@ -73,6 +76,7 @@ type subscription struct {
 	typ       Type
 	created   time.Time
 	logsCrit  ethereum.FilterQuery
+	txFilter  ethereum.FilterMethod
 	logs      chan []*types.Log
 	hashes    chan []common.Hash
 	headers   chan *types.Header
@@ -306,6 +310,22 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 	return es.subscribe(sub)
 }
 
+// SubscribeFilteredTxs test
+func (es *EventSystem) SubscribeFilteredTxs(hashes chan []common.Hash, methodFilter ethereum.FilterMethod) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       FilteredTransactionsSubscription,
+		txFilter:  methodFilter,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		hashes:    hashes,
+		headers:   make(chan *types.Header),
+		installed: make(chan struct{}),
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
 type filterIndex map[Type]map[rpc.ID]*subscription
 
 func (es *EventSystem) handleLogs(filters filterIndex, ev []*types.Log) {
@@ -347,6 +367,19 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 		hashes = append(hashes, tx.Hash())
 	}
 	for _, f := range filters[PendingTransactionsSubscription] {
+		f.hashes <- hashes
+	}
+}
+
+func (es *EventSystem) handleTxsEventFiltered(filters filterIndex, ev core.NewTxsEvent) {
+	for _, f := range filters[FilteredTransactionsSubscription] {
+		hashes := make([]common.Hash, 0, len(ev.Txs))
+		for _, tx := range ev.Txs {
+			fmt.Printf("**************** %v to value: %v\n", f.txFilter.Method, tx.Value())
+			if tx.Value().Cmp(big.NewInt(int64(f.txFilter.Method))) > 0 {
+				hashes = append(hashes, tx.Hash())
+			}
+		}
 		f.hashes <- hashes
 	}
 }
@@ -459,6 +492,7 @@ func (es *EventSystem) eventLoop() {
 		select {
 		case ev := <-es.txsCh:
 			es.handleTxsEvent(index, ev)
+			es.handleTxsEventFiltered(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)
 		case ev := <-es.rmLogsCh:
