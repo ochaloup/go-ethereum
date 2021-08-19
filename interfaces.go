@@ -155,7 +155,7 @@ type FilterQuery struct {
 }
 
 type FilterMethod struct {
-	Method int // just as a test
+	Method string // method name is a 4 bytes (part of the keccak256 hash)
 }
 
 // LogFilterer provides access to contract log events using a one-off query or continuous

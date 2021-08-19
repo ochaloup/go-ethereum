@@ -21,7 +21,7 @@ package filters
 import (
 	"context"
 	"fmt"
-	"math/big"
+	"reflect"
 	"sync"
 	"time"
 
@@ -375,9 +375,16 @@ func (es *EventSystem) handleTxsEventFiltered(filters filterIndex, ev core.NewTx
 	for _, f := range filters[FilteredTransactionsSubscription] {
 		hashes := make([]common.Hash, 0, len(ev.Txs))
 		for _, tx := range ev.Txs {
-			fmt.Printf("**************** %v to value: %v\n", f.txFilter.Method, tx.Value())
-			if tx.Value().Cmp(big.NewInt(int64(f.txFilter.Method))) > 0 {
-				hashes = append(hashes, tx.Hash())
+			fmt.Printf("**************** data: %v\n", tx.Data())
+			if tx.Data() != nil && len(tx.Data()) > 4 {
+				var filterMethod []byte = common.FromHex(f.txFilter.Method)
+
+				var dataSlice []byte = tx.Data()[0:5]
+				fmt.Printf("4byte: %v -- slice as it is: %v, txFilter.method: %v", len(dataSlice), dataSlice, filterMethod)
+
+				if reflect.DeepEqual(filterMethod, dataSlice) {
+					hashes = append(hashes, tx.Hash())
+				}
 			}
 		}
 		f.hashes <- hashes
