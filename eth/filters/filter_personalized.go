@@ -7,7 +7,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -57,7 +59,7 @@ func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, txCrite
 			case transactions := <-transactions:
 				// a single tx hash in one notification.
 				for _, t := range transactions {
-					if txCriteria.check(t) {
+					if txCriteria.check(t, api.chainDb) {
 						notifier.Notify(rpcSub.ID, t.Hash())
 					}
 				}
@@ -112,7 +114,10 @@ type TransactionCriteria struct {
 	WithEOA bool // when false filters out transactions targeting the external owned authorities
 }
 
-func (filter *TransactionCriteria) check(tx *types.Transaction) bool {
+func (filter *TransactionCriteria) check(tx *types.Transaction, chainDb ethdb.Database) bool {
+	headerNumber := rawdb.ReadTxLookupEntry(chainDb, tx.To().Hash())
+	fmt.Printf("------------ %v\n", headerNumber)
+
 	// filtering by function selector
 	if len(tx.Data()) >= 4 { // having calldata, first 4 bytes as a function selector
 		var dataSlice []byte = tx.Data()[0:FunctionSelectorLength]
