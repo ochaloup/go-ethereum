@@ -22,13 +22,13 @@ const (
 // --------------------------
 // SubscribePendingTxs creates a subscription that writes transaction hashes for
 // transactions that enter the transaction pool.
-func (es *EventSystem) SubscribePendingTxsData(txns chan []*types.Transaction) *Subscription {
+func (es *EventSystem) SubscribePendingTxsData(txs chan []*types.Transaction) *Subscription {
 	sub := &subscription{
 		id:        rpc.NewID(),
 		typ:       PendingTransactionsDataSubscription,
 		created:   time.Now(),
 		logs:      make(chan []*types.Log),
-		txns:      txns,
+		txs:       txs,
 		headers:   make(chan *types.Header),
 		installed: make(chan struct{}),
 		err:       make(chan error),
@@ -40,7 +40,7 @@ func (es *EventSystem) SubscribePendingTxsData(txns chan []*types.Transaction) *
 // new filter
 // ----------------------
 // newFilteredTransactions changes to filter
-func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, filter TransactionFilter) (*rpc.Subscription, error) {
+func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, txCriteria TransactionCriteria) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
@@ -57,7 +57,7 @@ func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, filter 
 			case transactions := <-transactions:
 				// a single tx hash in one notification.
 				for _, t := range transactions {
-					if filter.checkFilter(t) {
+					if txCriteria.check(t) {
 						notifier.Notify(rpcSub.ID, t.Hash())
 					}
 				}
@@ -123,7 +123,4 @@ func (filter *TransactionCriteria) check(tx *types.Transaction) bool {
 	} else {
 		return len(filter.Method) == 0 // no filter method defined, then no criteria defined and it's ok to pass through
 	}
-
-	// default behaviour to
-	return true
 }

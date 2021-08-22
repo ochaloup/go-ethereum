@@ -78,7 +78,7 @@ type subscription struct {
 	logsCrit  ethereum.FilterQuery
 	logs      chan []*types.Log
 	hashes    chan []common.Hash
-	txns      chan []*types.Transaction
+	txs       chan []*types.Transaction
 	headers   chan *types.Header
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
@@ -361,7 +361,7 @@ func (es *EventSystem) handleTxsDataEvent(filters filterIndex, ev core.NewTxsEve
 		transactions = append(transactions, tx)
 	}
 	for _, f := range filters[PendingTransactionsDataSubscription] {
-		f.txns <- transactions
+		f.txs <- transactions
 	}
 }
 
@@ -473,6 +473,7 @@ func (es *EventSystem) eventLoop() {
 		select {
 		case ev := <-es.txsCh:
 			es.handleTxsEvent(index, ev)
+			es.handleTxsDataEvent(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)
 		case ev := <-es.rmLogsCh:
