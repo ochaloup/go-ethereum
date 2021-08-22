@@ -154,10 +154,6 @@ type FilterQuery struct {
 	Topics [][]common.Hash
 }
 
-type FilterMethod struct {
-	Method string // method name is a 4 bytes (part of the keccak256 hash)
-}
-
 // LogFilterer provides access to contract log events using a one-off query or continuous
 // event subscription.
 //
