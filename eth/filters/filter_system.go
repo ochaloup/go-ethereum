@@ -365,30 +365,6 @@ func (es *EventSystem) handleTxsDataEvent(filters filterIndex, ev core.NewTxsEve
 	}
 }
 
-func (es *EventSystem) handleTxsEventFiltered(filters filterIndex, ev core.NewTxsEvent) {
-	for _, f := range filters[PendingTransactionsSubscription] {
-		hashes := make([]common.Hash, 0, len(ev.Txs))
-		for _, tx := range ev.Txs {
-
-			var dataSlice []byte
-			if len(tx.Data()) >= 4 { // having calldata, 4 bytes as a function selector
-				dataSlice = tx.Data()[0:FunctionSelectorLength]
-			}
-
-			functionSelector := f.txFilter.Method
-			dataSliceSelector := BytesToFunctionSelector(dataSlice)
-			fmt.Printf("4byte: %v -- bytes to hash: %v, function selctor hex: %v, data slice seelector: %v\n",
-				len(dataSlice), common.BytesToHash(dataSlice), functionSelector.GetHex(), dataSliceSelector.GetHex())
-
-			if dataSliceSelector == functionSelector {
-				hashes = append(hashes, tx.Hash())
-			}
-
-		}
-		f.hashes <- hashes
-	}
-}
-
 func (es *EventSystem) handleChainEvent(filters filterIndex, ev core.ChainEvent) {
 	for _, f := range filters[BlocksSubscription] {
 		f.headers <- ev.Block.Header()

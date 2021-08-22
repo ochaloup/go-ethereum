@@ -1,6 +1,8 @@
 package filters
 
 import (
+	"context"
+	"fmt"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -35,6 +37,44 @@ func (es *EventSystem) SubscribePendingTxsData(txns chan []*types.Transaction) *
 }
 
 // ----------------------
+// new filter
+// ----------------------
+// newFilteredTransactions changes to filter
+func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, filter TransactionFilter) (*rpc.Subscription, error) {
+	notifier, supported := rpc.NotifierFromContext(ctx)
+	if !supported {
+		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
+	}
+
+	rpcSub := notifier.CreateSubscription()
+
+	go func() {
+		transactions := make(chan []*types.Transaction, 128)
+		pendingTxSub := api.events.SubscribePendingTxsData(transactions)
+
+		for {
+			select {
+			case transactions := <-transactions:
+				// a single tx hash in one notification.
+				for _, t := range transactions {
+					if filter.checkFilter(t) {
+						notifier.Notify(rpcSub.ID, t.Hash())
+					}
+				}
+			case <-rpcSub.Err():
+				pendingTxSub.Unsubscribe()
+				return
+			case <-notifier.Closed():
+				pendingTxSub.Unsubscribe()
+				return
+			}
+		}
+	}()
+
+	return rpcSub, nil
+}
+
+// ----------------------
 // FunctionSelector type
 // ----------------------
 type FunctionSelector [FunctionSelectorLength]byte
@@ -53,7 +93,7 @@ func (fs *FunctionSelector) GetHex() string {
 	return common.Bytes2Hex(fs[:])
 }
 
-func BytesToFunctionSelector(b []byte) (fs FunctionSelector) {
+func CallDataToFunctionSelector(b []byte) (fs FunctionSelector) {
 	if b == nil {
 		return fs // with empty byte array
 	}
@@ -64,24 +104,26 @@ func BytesToFunctionSelector(b []byte) (fs FunctionSelector) {
 	return
 }
 
-type FilterMethod struct {
-	Method FunctionSelector // filters by calldata function name
-	// TODO: no functionality, consider to implement
+type TransactionCriteria struct {
+	// calldata function selector
+	Method FunctionSelector
+
+	// TODO: not working, consider to implement
 	WithEOA bool // when false filters out transactions targeting the external owned authorities
 }
 
-// SubscribeFilteredTxs test
-func (es *EventSystem) SubscribeFilteredTxs(hashes chan []common.Hash, methodFilter FilterMethod) *Subscription {
-	sub := &subscription{
-		id:        rpc.NewID(),
-		typ:       FilteredTransactionsSubscription,
-		txFilter:  methodFilter,
-		created:   time.Now(),
-		logs:      make(chan []*types.Log),
-		hashes:    hashes,
-		headers:   make(chan *types.Header),
-		installed: make(chan struct{}),
-		err:       make(chan error),
+func (filter *TransactionCriteria) check(tx *types.Transaction) bool {
+	// filtering by function selector
+	if len(tx.Data()) >= 4 { // having calldata, first 4 bytes as a function selector
+		var dataSlice []byte = tx.Data()[0:FunctionSelectorLength]
+		dataSliceFunctionSelector := CallDataToFunctionSelector(dataSlice)
+		fmt.Printf("4byte: %v -- bytes to hash: %v, function selctor hex: %v, data slice seelector: %v\n",
+			len(dataSlice), common.BytesToHash(dataSlice), filter.Method.GetHex(), dataSliceFunctionSelector.GetHex())
+		return filter.Method == dataSliceFunctionSelector
+	} else {
+		return len(filter.Method) == 0 // no filter method defined, then no criteria defined and it's ok to pass through
 	}
-	return es.subscribe(sub)
+
+	// default behaviour to
+	return true
 }
