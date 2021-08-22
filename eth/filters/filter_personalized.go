@@ -13,10 +13,30 @@ const (
 	// the function selector of 4 bytes long (keccak256 hash)
 	// see https://docs.soliditylang.org/en/v0.5.3/abi-spec.html#function-selector
 	FunctionSelectorLength int = 4
-	// filter subscription id, it can be used to know if it's the particular filter ID we want to work with
-	FilteredTransactionsSubscription int = 2000
 )
 
+// --------------------------
+// extending the filter_system.go
+// --------------------------
+// SubscribePendingTxs creates a subscription that writes transaction hashes for
+// transactions that enter the transaction pool.
+func (es *EventSystem) SubscribePendingTxsData(txns chan []*types.Transaction) *Subscription {
+	sub := &subscription{
+		id:        rpc.NewID(),
+		typ:       PendingTransactionsDataSubscription,
+		created:   time.Now(),
+		logs:      make(chan []*types.Log),
+		txns:      txns,
+		headers:   make(chan *types.Header),
+		installed: make(chan struct{}),
+		err:       make(chan error),
+	}
+	return es.subscribe(sub)
+}
+
+// ----------------------
+// FunctionSelector type
+// ----------------------
 type FunctionSelector [FunctionSelectorLength]byte
 
 // MarshalText returns the hex representation of a.
@@ -35,7 +55,7 @@ func (fs *FunctionSelector) GetHex() string {
 
 func BytesToFunctionSelector(b []byte) (fs FunctionSelector) {
 	if b == nil {
-		copy(fs[:], [4]byte)
+		return fs // with empty byte array
 	}
 	if len(b) > len(fs) {
 		b = b[len(b)-FunctionSelectorLength:]

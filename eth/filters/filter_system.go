@@ -50,10 +50,11 @@ const (
 	// PendingTransactionsSubscription queries tx hashes for pending
 	// transactions entering the pending state
 	PendingTransactionsSubscription
+	// PendingTransactionsDataSubscription queries tx data for pending
+	// transactions entering the pending state
+	PendingTransactionsDataSubscription
 	// BlocksSubscription queries hashes for blocks that are imported
 	BlocksSubscription
-	// FilteredTransactionsSubscription filtered
-	FilteredTransactionsSubscription
 	// LastSubscription keeps track of the last index
 	LastIndexSubscription
 )
@@ -75,9 +76,9 @@ type subscription struct {
 	typ       Type
 	created   time.Time
 	logsCrit  ethereum.FilterQuery
-	txFilter  FilterMethod
 	logs      chan []*types.Log
 	hashes    chan []common.Hash
+	txns      chan []*types.Transaction
 	headers   chan *types.Header
 	installed chan struct{} // closed when the filter is installed
 	err       chan error    // closed when the filter is uninstalled
@@ -354,8 +355,18 @@ func (es *EventSystem) handleTxsEvent(filters filterIndex, ev core.NewTxsEvent) 
 	}
 }
 
+func (es *EventSystem) handleTxsDataEvent(filters filterIndex, ev core.NewTxsEvent) {
+	transactions := make([]*types.Transaction, 0, len(ev.Txs))
+	for _, tx := range ev.Txs {
+		transactions = append(transactions, tx)
+	}
+	for _, f := range filters[PendingTransactionsDataSubscription] {
+		f.txns <- transactions
+	}
+}
+
 func (es *EventSystem) handleTxsEventFiltered(filters filterIndex, ev core.NewTxsEvent) {
-	for _, f := range filters[FilteredTransactionsSubscription] {
+	for _, f := range filters[PendingTransactionsSubscription] {
 		hashes := make([]common.Hash, 0, len(ev.Txs))
 		for _, tx := range ev.Txs {
 
@@ -486,7 +497,6 @@ func (es *EventSystem) eventLoop() {
 		select {
 		case ev := <-es.txsCh:
 			es.handleTxsEvent(index, ev)
-			es.handleTxsEventFiltered(index, ev)
 		case ev := <-es.logsCh:
 			es.handleLogs(index, ev)
 		case ev := <-es.rmLogsCh:
