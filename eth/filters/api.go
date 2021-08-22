@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"runtime/debug"
 	"sync"
 	"time"
 
@@ -177,14 +176,12 @@ func (api *PublicFilterAPI) NewPendingTransactions(ctx context.Context) (*rpc.Su
 }
 
 // newFilteredTransactions changes to filter
-func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, method ethereum.FilterMethod) (*rpc.Subscription, error) {
+func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, method FilterMethod) (*rpc.Subscription, error) {
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return &rpc.Subscription{}, rpc.ErrNotificationsUnsupported
 	}
 
-	fmt.Printf(">>>> Subscription created with method %v\n", method.Method)
-	debug.PrintStack()
 	rpcSub := notifier.CreateSubscription()
 
 	go func() {
@@ -194,8 +191,6 @@ func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, method 
 		for {
 			select {
 			case hashes := <-txHashes:
-				fmt.Printf(">>>>>>>>>>>eee>>> %+v\n", hashes)
-				debug.PrintStack()
 				// To keep the original behaviour, send a single tx hash in one notification.
 				// TODO(rjl493456442) Send a batch of tx hashes in one notification
 				for _, h := range hashes {

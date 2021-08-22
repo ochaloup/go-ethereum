@@ -21,7 +21,6 @@ package filters
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -76,7 +75,7 @@ type subscription struct {
 	typ       Type
 	created   time.Time
 	logsCrit  ethereum.FilterQuery
-	txFilter  ethereum.FilterMethod
+	txFilter  FilterMethod
 	logs      chan []*types.Log
 	hashes    chan []common.Hash
 	headers   chan *types.Header
@@ -310,22 +309,6 @@ func (es *EventSystem) SubscribePendingTxs(hashes chan []common.Hash) *Subscript
 	return es.subscribe(sub)
 }
 
-// SubscribeFilteredTxs test
-func (es *EventSystem) SubscribeFilteredTxs(hashes chan []common.Hash, methodFilter ethereum.FilterMethod) *Subscription {
-	sub := &subscription{
-		id:        rpc.NewID(),
-		typ:       FilteredTransactionsSubscription,
-		txFilter:  methodFilter,
-		created:   time.Now(),
-		logs:      make(chan []*types.Log),
-		hashes:    hashes,
-		headers:   make(chan *types.Header),
-		installed: make(chan struct{}),
-		err:       make(chan error),
-	}
-	return es.subscribe(sub)
-}
-
 type filterIndex map[Type]map[rpc.ID]*subscription
 
 func (es *EventSystem) handleLogs(filters filterIndex, ev []*types.Log) {
@@ -375,17 +358,21 @@ func (es *EventSystem) handleTxsEventFiltered(filters filterIndex, ev core.NewTx
 	for _, f := range filters[FilteredTransactionsSubscription] {
 		hashes := make([]common.Hash, 0, len(ev.Txs))
 		for _, tx := range ev.Txs {
-			fmt.Printf("**************** data: %v\n", tx.Data())
-			if tx.Data() != nil && len(tx.Data()) > 4 {
-				var filterMethod []byte = common.FromHex(f.txFilter.Method)
 
-				var dataSlice []byte = tx.Data()[0:5]
-				fmt.Printf("4byte: %v -- slice as it is: %v, txFilter.method: %v", len(dataSlice), dataSlice, filterMethod)
-
-				if reflect.DeepEqual(filterMethod, dataSlice) {
-					hashes = append(hashes, tx.Hash())
-				}
+			var dataSlice []byte
+			if len(tx.Data()) >= 4 { // having calldata, 4 bytes as a function selector
+				dataSlice = tx.Data()[0:FunctionSelectorLength]
 			}
+
+			functionSelector := f.txFilter.Method
+			dataSliceSelector := BytesToFunctionSelector(dataSlice)
+			fmt.Printf("4byte: %v -- bytes to hash: %v, function selctor hex: %v, data slice seelector: %v\n",
+				len(dataSlice), common.BytesToHash(dataSlice), functionSelector.GetHex(), dataSliceSelector.GetHex())
+
+			if dataSliceSelector == functionSelector {
+				hashes = append(hashes, tx.Hash())
+			}
+
 		}
 		f.hashes <- hashes
 	}
