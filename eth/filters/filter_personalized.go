@@ -8,9 +8,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const (
@@ -50,6 +52,19 @@ func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, txCrite
 
 	rpcSub := notifier.CreateSubscription()
 
+	var statedb *state.StateDB = nil
+	trieDb := state.NewDatabaseWithConfig(api.backend.ChainDb(), &trie.Config{Cache: 16})
+	header, err := api.backend.HeaderByNumber(ctx, rpc.EarliestBlockNumber)
+	if err != nil {
+		fmt.Printf("Errrorrrr on getting header %v\n", err)
+	} else {
+		fmt.Printf("It's good we have the header: number %v, root: %v, hash: %v, parent hash: %v\n", header.Number, header.Root.String(), header.Hash().String(), header.ParentHash.String())
+		statedb, err = state.New(header.Root, trieDb, nil)
+		if err != nil {
+			fmt.Printf("Errorrr cannot get the state db %v\n", err)
+		}
+	}
+
 	go func() {
 		transactions := make(chan []*types.Transaction, 128)
 		pendingTxSub := api.events.SubscribePendingTxsData(transactions)
@@ -59,7 +74,7 @@ func (api *PublicFilterAPI) NewFilteredTransactions(ctx context.Context, txCrite
 			case transactions := <-transactions:
 				// a single tx hash in one notification.
 				for _, t := range transactions {
-					if txCriteria.check(t, api.chainDb) {
+					if txCriteria.check(t, api.chainDb, statedb) {
 						notifier.Notify(rpcSub.ID, t.Hash())
 					}
 				}
@@ -114,9 +129,16 @@ type TransactionCriteria struct {
 	WithEOA bool // when false filters out transactions targeting the external owned authorities
 }
 
-func (filter *TransactionCriteria) check(tx *types.Transaction, chainDb ethdb.Database) bool {
+func (filter *TransactionCriteria) check(tx *types.Transaction, chainDb ethdb.Database, stateDb *state.StateDB) bool {
 	headerNumber := rawdb.ReadTxLookupEntry(chainDb, tx.To().Hash())
 	fmt.Printf("------------ %v\n", headerNumber)
+
+	if stateDb != nil {
+		codeHash := stateDb.GetCodeHash(*tx.To())
+		fmt.Printf("Code hash of the pointing to address %v is %v, empty: %v\n", tx.To().String(), codeHash, stateDb.Empty(*tx.To()))
+	} else {
+		fmt.Printf(">>>> stateDb is nil")
+	}
 
 	// filtering by function selector
 	if len(tx.Data()) >= 4 { // having calldata, first 4 bytes as a function selector
